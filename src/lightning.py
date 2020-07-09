@@ -182,7 +182,7 @@ class LightningDialogGPT(LightningConversation):
 
         log = {
             'train_loss': loss.item(),
-            'train_perplexity_ls': np.exp(loss.item()),
+            'train_perplexity': np.exp(loss.item()),
             'batch_size': source_sequence.size(0),
             'length': source_sequence.size(1)
         }
@@ -263,7 +263,7 @@ class LightningDialoUnifiedTransformer(LightningConversation):
 
         log = {
             'train_loss': loss.item(),
-            'train_perplexity_ls': np.exp(loss.item()),
+            'train_perplexity': np.exp(loss.item()),
             'batch_len': source_sequence.size(0) * source_sequence.size(1),
             'training_tokens': targets.size(0),
             'batch_type': batch_type
