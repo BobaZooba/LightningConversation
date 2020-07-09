@@ -166,7 +166,6 @@ Natural Language Understanding and Generation](https://arxiv.org/abs/1905.03197)
 
 ## Future Works
 - Добавить beam search;
-- Добавить семлирование для батчей;
 - Обучить модель для оценки MMI, чтобы переранжировать кандидатов;
 - Добавить больше лоссов (unlikelihood, plug'n'play);
 - Добавить неавторегрессионные модели, например, insertion transformer.
