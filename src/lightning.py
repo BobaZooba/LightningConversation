@@ -1,18 +1,16 @@
 import os
-import numpy as np
-
 from abc import ABC
 from argparse import ArgumentParser
 
-from src import data, neuro
-
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch import nn
 
+from src import data, model
+
 
 class LightningConversation(pl.LightningModule, ABC):
-
     PAD_TOKEN = '<PAD>'
     SEP_TOKEN = '▁<SEP>'
     CONTEXT_TOKEN = '▁<CTX>'
@@ -24,6 +22,7 @@ class LightningConversation(pl.LightningModule, ABC):
 
         with open(os.path.join(self.hparams.data_dir, 'vocab.txt')) as file_object:
             self.vocab = file_object.read().split('\n')
+        self.vocab_size = len(self.vocab)
 
         self.pad_index = self.vocab.index(self.PAD_TOKEN)
         self.sep_index = self.vocab.index(self.SEP_TOKEN)
@@ -49,7 +48,7 @@ class LightningConversation(pl.LightningModule, ABC):
                                                    pad_index=self.pad_index)
 
         if self.hparams.criterion in ['label_smoothing', 'ls']:
-            self.criterion = neuro.LabelSmoothingLoss(smoothing=self.hparams.smoothing,
+            self.criterion = model.LabelSmoothingLoss(smoothing=self.hparams.smoothing,
                                                       use_kl=self.hparams.use_kl,
                                                       ignore_index=self.pad_index)
         elif self.hparams.criterion in ['unlikelihood', 'unlike']:
@@ -68,20 +67,22 @@ class LightningConversation(pl.LightningModule, ABC):
         TODO add novograd
         """
 
+        lr = 1. if self.hparams.lr_scheduler == 'noam' else self.hparams.learning_rate
+
         if self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(params=self.parameters(),
-                                        lr=self.hparams.learning_rate,
+                                        lr=lr,
                                         weight_decay=self.hparams.weight_decay,
                                         momentum=self.hparams.momentum,
                                         nesterov=self.hparams.nesterov)
         else:
             optimizer = torch.optim.AdamW(params=self.parameters(),
-                                          lr=self.hparams.learning_rate,
+                                          lr=lr,
                                           weight_decay=self.hparams.weight_decay)
 
         # TODO другие шедуллеры
         if self.hparams.lr_scheduler == 'noam':
-            scheduler = neuro.NoamScheduler(optimizer,
+            scheduler = model.NoamScheduler(optimizer,
                                             model_dim=self.hparams.model_dim,
                                             warmup_steps=self.hparams.warmup_steps)
             return [optimizer], [scheduler]
@@ -124,7 +125,6 @@ class LightningConversation(pl.LightningModule, ABC):
         parser.add_argument('--query_segment_index', type=int, default=2)
         parser.add_argument('--context_segment_index', type=int, default=3)
         parser.add_argument('--weight_tying', action='store_true')
-        parser.add_argument('--vocab_size', type=int, default=32000)
         parser.add_argument('--n_positions', type=int, default=65)
         parser.add_argument('--dropout', type=float, default=0.1)
         parser.add_argument('--initializer_range', type=float, default=0.02)
@@ -141,7 +141,7 @@ class LightningConversation(pl.LightningModule, ABC):
         parser.add_argument('--momentum', type=float, default=0.9)
         parser.add_argument('--nesterov', action='store_true')
         parser.add_argument('--warmup_steps', type=int, default=4000)
-        parser.add_argument('--lr_scheduler', type=str, default='none')
+        parser.add_argument('--lr_scheduler', type=str, default='noam')
 
         return parser
 
@@ -151,7 +151,7 @@ class LightningDialogGPT(LightningConversation):
     def __init__(self, hparams):
         super().__init__(hparams=hparams)
 
-        self.model = neuro.GPT(
+        self.model = model.GPT(
             model_dim=self.hparams.model_dim,
             num_heads=self.hparams.num_heads,
             feed_forward_dim=self.hparams.feed_forward_dim,
@@ -159,7 +159,7 @@ class LightningDialogGPT(LightningConversation):
             query_segment_index=self.hparams.query_segment_index,
             context_segment_index=self.hparams.context_segment_index,
             weight_tying=self.hparams.weight_tying,
-            vocab_size=self.hparams.vocab_size,
+            vocab_size=self.vocab_size,
             n_positions=self.hparams.n_positions,
             dropout=self.hparams.dropout,
             padding_idx=self.pad_index,
@@ -167,7 +167,6 @@ class LightningDialogGPT(LightningConversation):
         )
 
     def forward(self, source_sequence, segment_indices, position_indices):
-
         logits = self.model(source_sequence, segment_indices, position_indices)
 
         return logits
@@ -195,13 +194,11 @@ class LightningDialogGPT(LightningConversation):
 
         logits = self.forward(source_sequence, segment_indices, position_indices)
 
-        prediction = logits.reshape(-1, logits.size(-1)).detach().cpu()
-        target = target_sequence.view(-1).detach().cpu()
+        prediction, target = logits.reshape(-1, logits.size(-1)), target_sequence.view(-1)
 
-        validation_loss = self.validation_criterion(prediction, target)
-        validation_smoothed_loss = self.criterion(prediction, target)
+        loss = self.criterion(prediction, target)
 
-        return {'val_loss': validation_loss, 'val_smoothed_loss': validation_smoothed_loss}
+        return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
@@ -219,7 +216,7 @@ class LightningDialoUnifiedTransformer(LightningConversation):
     def __init__(self, hparams):
         super().__init__(hparams)
 
-        self.model = neuro.UnifiedTransformer(
+        self.model = model.UnifiedTransformer(
             model_dim=self.hparams.model_dim,
             num_heads=self.hparams.num_heads,
             feed_forward_dim=self.hparams.feed_forward_dim,
@@ -228,7 +225,7 @@ class LightningDialoUnifiedTransformer(LightningConversation):
             query_segment_index=self.hparams.query_segment_index,
             context_segment_index=self.hparams.context_segment_index,
             weight_tying=self.hparams.weight_tying,
-            vocab_size=self.hparams.vocab_size,
+            vocab_size=self.vocab_size,
             n_positions=self.hparams.n_positions,
             dropout=self.hparams.dropout,
             padding_idx=self.pad_index,
@@ -236,7 +233,10 @@ class LightningDialoUnifiedTransformer(LightningConversation):
             masking_type=self.hparams.model_type
         )
 
-        self.seq2seq_prob = self.hparams.seq2seq_prob
+        self.seq2seq_masking_probs = np.linspace(
+            self.hparams.seq2seq_min_prob,
+            self.hparams.seq2seq_max_prob,
+            num=self.hparams.min_training_steps)
 
     def forward(self, source_sequence, segment_indices, position_indices, target_sequence):
 
@@ -247,9 +247,14 @@ class LightningDialoUnifiedTransformer(LightningConversation):
     def training_step(self, batch, batch_idx):
         source_sequence, target_sequence, segment_indices, position_indices = batch
 
-        if self.seq2seq_prob > 0 and np.random.random() < self.seq2seq_prob:
+        current_step = min(self.seq2seq_masking_probs.shape[0] - 1, self.global_step)
+        current_prob = self.seq2seq_masking_probs[current_step]
+
+        if np.random.random() < current_prob:
+            batch_type = 1
             self.model.set_seq2seq()
         else:
+            batch_type = 0
             self.model.set_causal()
 
         logits, targets = self.forward(source_sequence, segment_indices, position_indices, target_sequence)
@@ -260,7 +265,8 @@ class LightningDialoUnifiedTransformer(LightningConversation):
             'train_loss': loss.item(),
             'train_perplexity_ls': np.exp(loss.item()),
             'batch_len': source_sequence.size(0) * source_sequence.size(1),
-            'training_tokens': targets.size(0)
+            'training_tokens': targets.size(0),
+            'batch_type': batch_type
         }
 
         return {'loss': loss, 'log': log}

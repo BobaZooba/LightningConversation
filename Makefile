@@ -18,8 +18,11 @@ install-apex:
 	pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 	cd ../
 
+install-requirements:
+	pip install -r requirements.txt
+
 train-amazon:
 	python train.py --data_source amazon --data_dir ./data/amazon --checkpoint_path ./data/amazon/checkpoint --use_kl --gpus 4
 
 train-opensubtitles:
-	python train.py --use_kl --gpus 4
+	python train.py --data_source opensubtitles --data_dir ./data/opensubtitles --checkpoint_path ./data/opensubtitles/checkpoint --use_kl --gpus 4

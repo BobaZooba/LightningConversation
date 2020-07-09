@@ -30,6 +30,7 @@ class TransformerEmbedding(nn.Module):
                                                  embedding_dim=embed_dim,
                                                  padding_idx=padding_idx)
 
+        self.layer_norm = nn.LayerNorm(normalized_shape=embed_dim)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self,
@@ -47,7 +48,8 @@ class TransformerEmbedding(nn.Module):
         segment_emb = self.segment_embedding(segment_indices)
         position_emb = self.positional_embedding(position_indices)
 
-        emb = self.dropout(token_emb + segment_emb + position_emb)
+        emb = token_emb + segment_emb + position_emb
+        emb = self.dropout(self.layer_norm(emb))
 
         return emb
 
@@ -395,7 +397,7 @@ class UnifiedTransformer(nn.Module):
         # [sequence_len, batch_size, model_dim] -> [batch_size, sequence_len, model_dim]
         logits = hidden.transpose(0, 1)
 
-        if targets is not None:
+        if targets is not None and self.training:
             response_mask = segment_indices == self.response_segment_index
             logits = logits[(targets != self.padding_idx) & response_mask, :]
             targets = targets[(targets != self.padding_idx) & response_mask]
@@ -571,4 +573,4 @@ class NoamScheduler(_LRScheduler):
     def get_lr(self):
         last_epoch = max(1, self.last_epoch)
         scale = self.model_dim ** (-0.5) * min(last_epoch ** (-0.5), last_epoch * self.warmup_steps ** (-1.5))
-        return [base_lr * scale for base_lr in self.base_lrs]
+        return [lr * scale for lr in self.base_lrs]

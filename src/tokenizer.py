@@ -1,5 +1,5 @@
 import youtokentome as yttm
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 class Tokenizer:

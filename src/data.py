@@ -72,15 +72,15 @@ class BatchPreparing:
             pad_part = [self.pad_index] * (max_length - len(sample))
 
             if self.context_index is not None and self.context_index in sequence:
-                query_sequence = sequence[:sample_sep_index + 1]
+                query_sequence = sequence[:sample_sep_index]
                 query_segment = self.get_segment_indices_with_context(query_sequence)
                 query_position = self.get_position_indices_with_context(query_sequence)
             else:
-                query_segment = [self.query_segment_index] * (sample_sep_index + 1)
-                query_position = list(range(sample_sep_index + 1))
+                query_segment = [self.query_segment_index] * sample_sep_index
+                query_position = list(range(sample_sep_index))
 
-            response_segment = [self.response_segment_index] * (len(sample) - sample_sep_index - 2)
-            response_position = list(range(len(sample) - sample_sep_index - 2))
+            response_segment = [self.response_segment_index] * (len(sample) - sample_sep_index)
+            response_position = list(range(len(sample) - sample_sep_index))
 
             segment = query_segment + response_segment + pad_part
             position = query_position + response_position + pad_part

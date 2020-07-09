@@ -12,6 +12,7 @@ import requests
 import youtokentome as yttm
 from numpy import random
 from tqdm import tqdm
+import json
 
 from src.tokenizer import Tokenizer
 
@@ -47,7 +48,7 @@ class BaseCollector:
         self.total_collecting_samples = None
 
     @staticmethod
-    def download_file(url, save_path, verbose=False):
+    def download_file(url: str, save_path: str, verbose: bool = False):
         try:
             filename = save_path.split('/')[-1]
             with requests.get(url, stream=True) as r:
@@ -103,7 +104,7 @@ class BaseCollector:
         else:
             return True
 
-    def tokenized_filter_rules(self, tokenized_text: List[int]):
+    def tokenized_filter_rules(self, tokenized_text: List[int]) -> bool:
 
         current_sep_index = tokenized_text.index(self.tokenizer.sep_index)
 
@@ -121,9 +122,6 @@ class BaseCollector:
 
     @staticmethod
     def text_processing(text: str) -> str:
-        text = text.lower()
-
-        text = re.sub('(?:^|(?:[.!?]\\s))(\\w+):', '', text)
         text = re.sub('[\ud83d\ude0a\ude03]', '', text)
         text = re.sub('[\\[(](.*?)[\\])]', '', text)
 
@@ -470,6 +468,16 @@ class OpenSubtitlesCollector(BaseCollector):
 
         return samples
 
+    @staticmethod
+    def text_processing(text: str) -> str:
+        text = re.sub('(?:^|(?:[.!?]\\s))(\\w+):', '', text)
+        text = re.sub('[\ud83d\ude0a\ude03]', '', text)
+        text = re.sub('[\\[(](.*?)[\\])]', '', text)
+
+        text = text.strip(' -\n\r,.')
+
+        return text
+
     def generate_data(self) -> Generator[Any, None, None]:
         n_empty_lines = 0
 
@@ -559,8 +567,8 @@ if __name__ == '__main__':
     parser.add_argument('--sep_token', type=str, default='<SEP>')
     parser.add_argument('--context_token', type=str, default=None)
     parser.add_argument('--max_n_context', type=int, default=3)
-    parser.add_argument('--max_train_samples', type=int, default=int(1.e+7))
-    parser.add_argument('--n_bpe_train_samples', type=int, default=int(1.e+7))
+    parser.add_argument('--max_train_samples', type=int, default=int(1.e+9))
+    parser.add_argument('--n_bpe_train_samples', type=int, default=int(5.e+7))
 
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--download', action='store_true')
@@ -591,6 +599,6 @@ if __name__ == '__main__':
     elif args.data_source == 'opensubtitles':
         collector = OpenSubtitlesCollector(args)
     else:
-        raise ValueError('Not available data source')
+        collector = BooksCollector(args)
 
     collector.run()

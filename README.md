@@ -1,5 +1,21 @@
 # Lightning Conversation
 
+```
+├── src
+│   ├── __init__.py
+│   ├── data.py
+│   ├── inference.py
+│   ├── lightning.py
+│   ├── model.py
+│   └── tokenizer.py
+├── Makefile
+├── README.md
+├── archi.png
+├── get_dataset.py
+├── requirements.txt
+└── train.py
+```
+
 ## Запуск
 - ```make install-requirements``` - установка зависимостей;  
 - ```make install-apex``` - установка apex для mixed precision;
@@ -71,59 +87,86 @@ Natural Language Understanding and Generation](https://arxiv.org/abs/1905.03197)
 
 Преимущество GPT заключается в том, что есть больше тренировочного сигнала, так как нужно сделать предсказания для всех
 токенов, преимуществом же Seq2SeqLM является attention/self-attention между всей последовательностью.
-Для того, чтобы использовать преимущества обоих подходов вводится параметр ```seq2seq_prob```, 
-который отвечает за вероятность использовать текущий батч для ```seq2seq```, 
-в противном случае attention маска будет каузальной.
+Для того, чтобы использовать преимущества обоих вводится дополнительный шедулер для вероятности того, что текущий батч
+будет использован как ```seq2seq``` или ```causal```. С ходом обучения вероятность семплировать ```seq2seq``` батч увеличивается.
+Стандартные значения: 0.1 в начале, 0.9 в конце, количество шагов 40000 (дальше остается максимальный параметр).
 
 ## Параметры
+### ```train.py```
     #train
-    --model_type', type=str, default='seq2seq'
-    --data_source', type=str, default='opensubtitles'
-    --data_dir', type=str, default='./data/opensubtitles'
-    --checkpoint_path', type=str, default='./data/opensubtitles/checkpoint'
-    --project_name', type=str, default='LightningConversation'
-    --max_norm', type=float, default=2.5
-    --distributed_backend', type=str, default='ddp'
-    --gpus', type=int, default=1 if torch.cuda.is_available() else 0
-    --n_grad_accumulate', type=int, default=1
-    --batching_type', type=str, default='db'
-    --num_workers', type=int, default=1
-    --batch_size', type=int, default=64
-    --max_length', type=int, default=64
-    --seed', type=int, default=42
-    --seq2seq_prob', type=int, default=0.25
+    --model_type, type=str, default=seq2seq
+    --data_source, type=str, default=amazon
+    --data_dir, type=str, default=./data/amazon
+    --checkpoint_path, type=str, default=./data/amazon/checkpoint
+    --project_name, type=str, default=LightningConversation
+    --max_norm, type=float, default=2.5
+    --distributed_backend, type=str, default=ddp
+    --gpus, type=int, default=1 if torch.cuda.is_available() else 0
+    --n_grad_accumulate, type=int, default=1
+    --batching_type, type=str, default=db
+    --num_workers, type=int, default=1
+    --batch_size, type=int, default=64
+    --max_length, type=int, default=64
+    --seed, type=int, default=42
+    --seq2seq_min_prob, type=float, default=0.1
+    --seq2seq_max_prob, type=float, default=0.9
+    --min_training_steps, type=int, default=40000
     
     # model
-    --model_dim', type=int, default=768
-    --num_heads', type=int, default=12
-    --feed_forward_dim', type=int, default=3072
-    --num_layers', type=int, default=12
-    --response_segment_index', type=int, default=1
-    --query_segment_index', type=int, default=2
-    --context_segment_index', type=int, default=3
-    --weight_tying', action='store_true'
-    --vocab_size', type=int, default=32000
-    --n_positions', type=int, default=65
-    --dropout', type=float, default=0.1
-    --initializer_range', type=float, default=0.02
+    --model_dim, type=int, default=768
+    --num_heads, type=int, default=12
+    --feed_forward_dim, type=int, default=3072
+    --num_layers, type=int, default=12
+    --response_segment_index, type=int, default=1
+    --query_segment_index, type=int, default=2
+    --context_segment_index, type=int, default=3
+    --weight_tying, action=store_true
+    --n_positions, type=int, default=65
+    --dropout, type=float, default=0.1
+    --initializer_range, type=float, default=0.02
 
     # loss
-    --criterion', type=str, default='label_smoothing'
-    --smoothing', type=float, default=0.1
-    --use_kl', action='store_true'
+    --criterion, type=str, default=label_smoothing
+    --smoothing, type=float, default=0.1
+    --use_kl, action=store_true
 
     # optimizers & schedulers
-    --optimizer', type=str, default='adam'
-    --learning_rate', type=float, default=0.001
-    --weight_decay', type=float, default=0.
-    --momentum', type=float, default=0.9
-    --nesterov', action='store_true'
-    --warmup_steps', type=int, default=4000
-    --lr_scheduler', type=str, default='none'
+    --optimizer, type=str, default=adam
+    --learning_rate, type=float, default=0.001
+    --weight_decay, type=float, default=0.
+    --momentum, type=float, default=0.9
+    --nesterov, action=store_true
+    --warmup_steps, type=int, default=4000
+    --lr_scheduler, type=str, default=none
+    
+### ```get_dataset.py```
+    --data_source, type=str, required=True
+    --data_dir, type=str, required=True
+    --sep_token, type=str, default=<SEP>
+    --context_token, type=str, default=None
+    --max_n_context, type=int, default=3
+    --max_train_samples, type=int, default=int(1.e+7)
+    --n_bpe_train_samples, type=int, default=int(1.e+7)
+    --verbose, action=store_true
+    --download, action=store_true
+    --train_bpe, action=store_true
+    --collect_data, action=store_true
+    --chunk_size, type=int, default=int(1.5e+6)
+    --min_validation_size, type=int, default=100000
+    --validation_prob, type=float, default=0.1
+    --min_chars, type=int, default=25
+    --max_chars, type=int, default=512
+    --min_tokens, type=int, default=10
+    --min_tokens_query, type=int, default=3
+    --min_tokens_response, type=int, default=3
+    --max_tokens, type=int, default=128
+    --max_unknowns, type=int, default=3
+    --vocab_size, type=int, default=32000
+    --bpe_coverage, type=float, default=0.999
 
 ## Future Works
-- Написать inference моделей;
-- Добавить nucleous sampling, beam search;
+- Добавить beam search;
+- Добавить семлирование для батчей;
 - Обучить модель для оценки MMI, чтобы переранжировать кандидатов;
-- Добавить неавторегрессионные модели, например, insertion transformer;
-- Добавить больше лоссов (unlikelihood, plug'n'play).
+- Добавить больше лоссов (unlikelihood, plug'n'play);
+- Добавить неавторегрессионные модели, например, insertion transformer.

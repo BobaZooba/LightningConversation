@@ -2,13 +2,14 @@ import torch
 from torch.nn import functional as F
 from src.tokenizer import Tokenizer
 from src.data import BatchPreparing
-from src.neuro import Seq2SeqLM
+from src.model import UnifiedTransformer
 from typing import Optional, List
 
 
 class Decoder:
 
-    def __init__(self, tokenizer_path: str, model: Seq2SeqLM, max_turns: int = 64, device: Optional[str] = None):
+    def __init__(self, tokenizer_path: str, model: UnifiedTransformer,
+                 max_turns: int = 64, device: Optional[str] = None):
 
         self.tokenizer = Tokenizer(tokenizer_path=tokenizer_path)
 
@@ -27,6 +28,7 @@ class Decoder:
             self.model.to(self.device)
 
         self.model.eval()
+        self.model.set_seq2seq()
 
     def tokenize(self, query: str, context: Optional[List[str]] = None) -> List[List[int]]:
 
@@ -40,7 +42,7 @@ class Decoder:
         return tokens
 
     @staticmethod
-    def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-10000.):
+    def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-10000.) -> torch.tensor:
         assert logits.dim() == 1
         top_k = min(top_k, logits.size(-1))
         if top_k > 0:
@@ -59,7 +61,7 @@ class Decoder:
             logits[indices_to_remove] = filter_value
         return logits
 
-    def predict(self, tokens: List[List[int]]):
+    def predict(self, tokens: List[List[int]]) -> torch.tensor:
 
         source_sequence, _, segment_indices, position_indices = self.batch_preparer.prepare_batch(tokens)
 
@@ -123,7 +125,7 @@ class Decoder:
 
         return response
 
-    def beam_decoding(self, query: str, context: Optional[List[str]] = None, temperature: float = 1.):
+    def beam_decoding(self, query: str, context: Optional[List[str]] = None, temperature: float = 1.) -> str:
         # answer_indices = list()
         #
         # tokens = self.tokenize(query, context)

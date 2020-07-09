@@ -4,7 +4,7 @@ import logging
 import random
 import numpy as np
 import json
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 
 from src import lightning
 import pytorch_lightning as pl
@@ -30,25 +30,27 @@ def set_global_seed(seed: int):
     torch.backends.cudnn.benchmark = False
 
 
-def get_args():
+def get_args() -> Namespace:
 
     parser = ArgumentParser(add_help=False)
 
     parser.add_argument('--model_type', type=str, default='seq2seq')
-    parser.add_argument('--data_source', type=str, default='opensubtitles')
-    parser.add_argument('--data_dir', type=str, default='./data/opensubtitles')
-    parser.add_argument('--checkpoint_path', type=str, default='./data/opensubtitles/checkpoint')
+    parser.add_argument('--data_source', type=str, default='amazon')
+    parser.add_argument('--data_dir', type=str, default='./data/amazon')
+    parser.add_argument('--checkpoint_path', type=str, default='./data/amazon/checkpoint')
     parser.add_argument('--project_name', type=str, default='LightningConversation')
     parser.add_argument('--max_norm', type=float, default=2.5)
     parser.add_argument('--distributed_backend', type=str, default='ddp')
     parser.add_argument('--gpus', type=int, default=1 if torch.cuda.is_available() else 0)
-    parser.add_argument('--n_grad_accumulate', type=int, default=1)
+    parser.add_argument('--n_batch_accumulate', type=int, default=1)
     parser.add_argument('--batching_type', type=str, default='db')
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_length', type=int, default=64)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--seq2seq_prob', type=int, default=0.5)
+    parser.add_argument('--seq2seq_min_prob', type=float, default=0.1)
+    parser.add_argument('--seq2seq_max_prob', type=float, default=0.9)
+    parser.add_argument('--min_training_steps', type=int, default=40000)
 
     parser = lightning.LightningConversation.add_model_specific_args(parser)
 
@@ -57,7 +59,7 @@ def get_args():
     return parsed_args
 
 
-if __name__ == '__main__':
+def train():
 
     logger = logging.getLogger(__file__)
 
@@ -81,14 +83,14 @@ if __name__ == '__main__':
     # comet logger don't work with comet logger
     if comet_api_key is not None and args.distributed_backend == 'dp':
         from pytorch_lightning.loggers import CometLogger
-        logger = CometLogger(api_key=comet_api_key,
-                             project_name=args.project_name)
-        logger.experiment.log_parameters(args.__dict__)
-        logging.info('Use CometML Logger')
+        pl_logger = CometLogger(api_key=comet_api_key,
+                                project_name=args.project_name)
+        pl_logger.experiment.log_parameters(args.__dict__)
+        logger.info('Use CometML Logger')
     else:
-        logger = TensorBoardLogger(save_dir=os.path.join(os.getcwd(), args.data_dir),
-                                   name=args.project_name)
-        logging.info('Use TensorBoard Logger')
+        pl_logger = TensorBoardLogger(save_dir=os.path.join(os.getcwd(), args.data_dir),
+                                      name=args.project_name)
+        logger.info('Use TensorBoard Logger')
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         filepath=os.path.join(os.getcwd(), args.checkpoint_path),
@@ -106,13 +108,13 @@ if __name__ == '__main__':
     except ModuleNotFoundError:
         use_amp = False
         precision = 32
-        logging.info('Train without amp, you can install it with command: make install-apex')
+        logger.info('Train without amp, you can install it with command: make install-apex')
 
     with open(os.path.join(args.data_dir, 'hparams.json'), mode='w') as file_object:
         json.dump(args.__dict__, file_object)
 
-    trainer = pl.Trainer(logger=logger,
-                         accumulate_grad_batches=args.n_grad_accumulate,
+    trainer = pl.Trainer(logger=pl_logger,
+                         accumulate_grad_batches=args.n_batch_accumulate,
                          use_amp=use_amp,
                          precision=precision,
                          gradient_clip=args.max_norm,
@@ -125,3 +127,7 @@ if __name__ == '__main__':
                          checkpoint_callback=checkpoint_callback)
 
     trainer.fit(model)
+
+
+if __name__ == '__main__':
+    train()
