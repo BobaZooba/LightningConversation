@@ -1,6 +1,6 @@
 numpy==1.18.3
 pytorch-lightning==0.7.3
-requests==2.23.0
+requests==2.31.0
 torch==1.5.0
 tqdm==4.45.0
 youtokentome==1.0.6
